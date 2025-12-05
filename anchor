@@ -1,0 +1,3817 @@
+  
+
+> [!info] About This Guide
+
+> Master Anchor framework by building real smart contracts with step-by-step explanations
+
+  
+
+---
+
+  
+
+## 📚 Table of Contents
+
+  
+
+> [!abstract]- Quick Navigation
+
+> 1. [[#🚀 1. ANCHOR PROGRAM STRUCTURE & SETUP|Anchor Program Structure & Setup]]
+
+> 2. [[#🔐 2. THE #[derive(Accounts)] MACRO (CORE SECURITY)|The #[derive(Accounts)] Macro]]
+
+> 3. [[#👥 3. ACCOUNT TYPES & VALIDATION|Account Types & Validation]]
+
+> 4. [[#🏗️ 4. DEFINING DATA STRUCTURES WITH #[account]|Defining Data Structures]]
+
+> 5. [[#🎬 5. INSTRUCTIONS & THE #[program] MODULE|Instructions & The #[program] Module]]
+
+> 6. [[#🔑 6. PROGRAM DERIVED ADDRESSES (PDAs) IN CODE|PDAs in Code]]
+
+> 7. [[#⚙️ 7. CONSTRAINTS DEEP DIVE|Constraints Deep Dive]]
+
+> 8. [[#❌ 8. ERROR HANDLING & CUSTOM ERRORS|Error Handling & Custom Errors]]
+
+> 9. [[#📢 9. EVENTS & LOGGING|Events & Logging]]
+
+> 10. [[#🔀 10. CROSS-PROGRAM INVOCATION (CPI)|Cross-Program Invocation]]
+
+> 11. [[#🪙 11. SPL TOKEN INTEGRATION|SPL Token Integration]]
+
+> 12. [[#🧪 12. TESTING ANCHOR PROGRAMS|Testing Anchor Programs]]
+
+> 13. [[#🛠️ 13. ANCHOR CLI & WORKSPACE|Anchor CLI & Workspace]]
+
+> 14. [[#📝 14. IDL & CLIENT GENERATION|IDL & Client Generation]]
+
+> 15. [[#🔒 15. SECURITY PATTERNS IN CODE|Security Patterns in Code]]
+
+> 16. [[#🚀 16. ADVANCED TECHNIQUES|Advanced Techniques]]
+
+> 17. [[#📦 17. DEPLOYMENT & UPGRADES|Deployment & Upgrades]]
+
+> 18. [[#💯 18. REAL-WORLD EXAMPLE: COMPLETE PROGRAM|Real-World Example]]
+
+  
+
+---
+
+  
+
+## 🚀 1. ANCHOR PROGRAM STRUCTURE & SETUP
+
+  
+
+### 1.1 Project Initialization
+
+  
+
+**Step 1: Create a new Anchor project**
+
+  
+
+```bash
+
+anchor init my_solana_program
+
+cd my_solana_program
+
+```
+
+  
+
+**This creates:**
+
+```
+
+my_solana_program/
+
+├── Anchor.toml           # Configuration
+
+├── Cargo.toml            # Workspace dependencies
+
+├── programs/
+
+│   └── my_solana_program/
+
+│       ├── Cargo.toml    # Program-specific deps
+
+│       └── src/
+
+│           └── lib.rs    # Your program code
+
+├── tests/
+
+│   └── my_solana_program.ts  # TypeScript tests
+
+└── app/                  # Frontend placeholder
+
+```
+
+  
+
+### 1.2 Basic Program Structure
+
+  
+
+**File: `programs/my_solana_program/src/lib.rs`**
+
+  
+
+```rust
+
+use anchor_lang::prelude::*;
+
+  
+
+// 1. Declare your program ID
+
+declare_id!("11111111111111111111111111111111");
+
+  
+
+// 2. Define your program module
+
+#[program]
+
+pub mod my_solana_program {
+
+    use super::*;
+
+  
+
+    // 3. Write your instructions
+
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+
+        msg!("Hello, Solana!");
+
+        Ok(())
+
+    }
+
+}
+
+  
+
+// 4. Define your accounts struct
+
+#[derive(Accounts)]
+
+pub struct Initialize {}
+
+```
+
+  
+
+**What each part does:**
+
+  
+
+| Component | Purpose | Example |
+
+|-----------|---------|---------|
+
+| `declare_id!()` | Program's public address | Generated automatically |
+
+| `#[program]` | Defines instruction module | Contains all functions |
+
+| Function | One instruction | `initialize`, `transfer`, etc. |
+
+| `Context<T>` | Accounts for this instruction | `T` = accounts struct |
+
+| `#[derive(Accounts)]` | Validates accounts | Auto-generates validation |
+
+  
+
+### 1.3 Understanding Context<T>
+
+  
+
+**What is Context?**
+
+  
+
+```rust
+
+pub fn my_instruction(ctx: Context<MyAccounts>, param: u64) -> Result<()> {
+
+    // ctx.accounts = all accounts passed in
+
+    // ctx.program_id = this program's address
+
+    // ctx.bumps = bump seeds for PDAs
+
+    // ctx.remaining_accounts = extra accounts
+
+    Ok(())
+
+}
+
+  
+
+// MyAccounts is a struct defining which accounts are needed
+
+#[derive(Accounts)]
+
+pub struct MyAccounts<'info> {
+
+    pub account1: Account<'info, SomeData>,
+
+    pub account2: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+
+}
+
+```
+
+  
+
+**Breaking it down:**
+
+  
+
+- `ctx.accounts` → Access all accounts
+
+- `ctx.program_id` → This program's address
+
+- `ctx.bumps` → PDA bump seeds
+
+- `ctx.remaining_accounts` → Extra accounts beyond declared ones
+
+  
+
+---
+
+  
+
+## 🔐 2. THE #[derive(Accounts)] MACRO (CORE SECURITY)
+
+  
+
+### 2.1 What Does #[derive(Accounts)] Do?
+
+  
+
+> [!important] Core Security Foundation
+
+> This macro is THE security foundation of Anchor. It automatically validates that:
+
+> - Accounts are owned by the right program
+
+> - Signers have actually signed
+
+> - PDAs are correctly derived
+
+> - Mutability is respected
+
+  
+
+> [!danger] Without Anchor (Unsafe)
+
+> ```rust
+
+> pub fn transfer(
+
+>     from: AccountInfo,
+
+>     to: AccountInfo,
+
+>     amount: u64,
+
+> ) -> Result<()> {
+
+>     // ❌ You must manually verify EVERYTHING:
+
+>     // - Is 'from' owned by your program?
+
+>     // - Did 'from' sign this transaction?
+
+>     // - Is 'to' a valid account?
+
+>     // 100+ lines of validation code!
+
+>     Ok(())
+
+> }
+
+> ```
+
+  
+
+> [!success] With Anchor (Safe)
+
+> ```rust
+
+> pub fn transfer(ctx: Context<Transfer>, amount: u64) -> Result<()> {
+
+>     // ✅ All validation is automatic!
+
+>     // Anchor checked everything before this runs
+
+>     Ok(())
+
+> }
+
+>
+
+> #[derive(Accounts)]
+
+> pub struct Transfer<'info> {
+
+>     #[account(mut)]
+
+>     pub from: Account<'info, UserData>,
+
+>     #[account(mut)]
+
+>     pub to: Account<'info, UserData>,
+
+>     pub signer: Signer<'info>,
+
+> }
+
+> ```
+
+  
+
+### 2.2 Lifetime Parameter ('info)
+
+  
+
+**What is `'info`?**
+
+  
+
+```rust
+
+pub struct Transfer<'info> {  // <- This 'info is a lifetime
+
+    pub account: Account<'info, Data>,
+
+}
+
+```
+
+  
+
+> [!tip] In Simple Terms
+
+> - Rust's memory safety feature
+
+> - Means: "this account lives as long as the instruction execution"
+
+> - Required by Anchor (just always write it)
+
+> - Think of it as: "this data is borrowed for the duration of this instruction"
+
+  
+
+> [!important] Rule
+
+> Always include `'info` in #[derive(Accounts)]
+
+  
+
+---
+
+  
+
+## 👥 3. ACCOUNT TYPES & VALIDATION
+
+  
+
+### 3.1 Core Account Types
+
+  
+
+**Anchor provides different account types for different purposes:**
+
+  
+
+| Type | Purpose | Check |
+
+|------|---------|-------|
+
+| `Account<'info, T>` | Data account owned by program | Verifies owner = program |
+
+| `Signer<'info>` | Account that signed transaction | Verifies signature |
+
+| `Program<'info, T>` | Another program (for CPI) | Verifies executable |
+
+| `UncheckedAccount<'info>` | Any account (DANGEROUS) | No verification |
+
+| `SystemAccount<'info>` | Regular wallet/account | Basic check |
+
+  
+
+### 3.2 Account<'info, T> - The Standard
+
+  
+
+**Used for:** Data accounts owned by your program
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct UpdateProfile<'info> {
+
+    #[account(mut)]
+
+    pub profile: Account<'info, UserProfile>,  // <- Owned by this program
+
+    pub signer: Signer<'info>,
+
+}
+
+  
+
+#[account]
+
+pub struct UserProfile {
+
+    pub name: String,
+
+    pub age: u8,
+
+}
+
+  
+
+pub fn update_profile(
+
+    ctx: Context<UpdateProfile>,
+
+    new_name: String,
+
+) -> Result<()> {
+
+    // Automatically verified:
+
+    // ✓ profile.owner == crate::ID (your program)
+
+    // ✓ profile is initialized
+
+    // ✓ profile data is valid
+
+    ctx.accounts.profile.name = new_name;
+
+    Ok(())
+
+}
+
+```
+
+  
+
+> [!success] What Gets Validated
+
+> - ✅ Account owner is YOUR program
+
+> - ✅ Account is initialized (discriminator matches)
+
+> - ✅ Data can be deserialized as `UserProfile`
+
+> - ❌ Rejects if any check fails
+
+  
+
+### 3.3 Signer<'info> - Signature Verification
+
+  
+
+**Used for:** Accounts that must have signed the transaction
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct Create<'info> {
+
+    #[account(init, payer = creator, space = 8 + 32)]
+
+    pub new_account: Account<'info, Data>,
+
+    #[account(mut)]
+
+    pub creator: Signer<'info>,  // <- MUST have signed
+
+    pub system_program: Program<'info, System>,
+
+}
+
+  
+
+pub fn create(ctx: Context<Create>) -> Result<()> {
+
+    // creator automatically verified as signer
+
+    // If not signed, transaction fails before reaching this function
+
+    msg!("Creator: {}", ctx.accounts.creator.key());
+
+    Ok(())
+
+}
+
+```
+
+  
+
+> [!important] Key Rule
+
+> If you want to verify someone authorized an action, use `Signer<'info>`.
+
+  
+
+### 3.4 Program<'info, T> - For CPIs
+
+  
+
+**Used for:** When you call another program
+
+  
+
+```rust
+
+use anchor_spl::token::Token;
+
+  
+
+#[derive(Accounts)]
+
+pub struct TransferTokens<'info> {
+
+    pub token_program: Program<'info, Token>,  // <- SPL Token Program
+
+    // ... other accounts
+
+}
+
+  
+
+pub fn transfer_tokens(ctx: Context<TransferTokens>) -> Result<()> {
+
+    // token_program verified as:
+
+    // ✓ executable (is a program)
+
+    // ✓ matches expected program ID
+
+    Ok(())
+
+}
+
+```
+
+  
+
+### 3.5 UncheckedAccount<'info> - Use with Caution
+
+  
+
+**Used for:** When you REALLY need to skip validation (rarely!)
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct RiskyOperation<'info> {
+
+    /// CHECK: We're just reading public data
+
+    pub unknown_account: UncheckedAccount<'info>,
+
+}
+
+  
+
+pub fn risky_op(ctx: Context<RiskyOperation>) -> Result<()> {
+
+    // NO validation!
+
+    // You MUST manually verify in your code
+
+    // Only use if you have a very specific reason
+
+    Ok(())
+
+}
+
+```
+
+  
+
+> [!warning] Important
+
+> Always add a `/// CHECK:` comment explaining why you're skipping validation.
+
+  
+
+---
+
+  
+
+## 🏗️ 4. DEFINING DATA STRUCTURES WITH #[account]
+
+  
+
+### 4.1 Basic Account Definition
+
+  
+
+**Create custom account types:**
+
+  
+
+```rust
+
+use anchor_lang::prelude::*;
+
+  
+
+#[account]
+
+pub struct Counter {
+
+    pub count: u64,
+
+    pub authority: Pubkey,
+
+}
+
+  
+
+#[account]
+
+pub struct UserProfile {
+
+    pub name: String,
+
+    pub age: u8,
+
+    pub wallet: Pubkey,
+
+    pub created_at: i64,
+
+}
+
+```
+
+  
+
+> [!success] What #[account] Does
+
+> - ✅ Automatically implements serialization (Borsh)
+
+> - ✅ Adds 8-byte discriminator (identifies account type)
+
+> - ✅ Makes it usable with `Account<'info, T>`
+
+  
+
+### 4.2 Account Size Calculation
+
+  
+
+**Why size matters:** You pay rent based on account size!
+
+  
+
+**Without InitSpace (manual):**
+
+```rust
+
+#[account]
+
+pub struct Data {
+
+    pub owner: Pubkey,       // 32 bytes
+
+    pub amount: u64,         // 8 bytes
+
+    pub is_active: bool,     // 1 byte
+
+    // Total: 41 bytes
+
+}
+
+  
+
+// When creating, add 8 for discriminator:
+
+// space = 8 + 41 = 49 bytes
+
+```
+
+  
+
+**With InitSpace (automatic):**
+
+```rust
+
+#[account]
+
+#[derive(InitSpace)]
+
+pub struct Data {
+
+    pub owner: Pubkey,       // 32 bytes (auto-counted)
+
+    pub amount: u64,         // 8 bytes (auto-counted)
+
+    pub is_active: bool,     // 1 byte (auto-counted)
+
+}
+
+  
+
+// Anchor calculates size automatically!
+
+// space = 8 + Data::INIT_SPACE
+
+```
+
+  
+
+**Always use #[derive(InitSpace)]:**
+
+```rust
+
+#[account]
+
+#[derive(InitSpace)]
+
+pub struct ComplexData {
+
+    pub id: u64,
+
+    pub owner: Pubkey,
+
+    #[max_len(100)]  // <- Important for Strings!
+
+    pub name: String,
+
+    pub count: u32,
+
+}
+
+  
+
+// Usage in account creation:
+
+#[derive(Accounts)]
+
+pub struct Create<'info> {
+
+    #[account(init, payer = payer, space = 8 + ComplexData::INIT_SPACE)]
+
+    pub data: Account<'info, ComplexData>,
+
+    #[account(mut)]
+
+    pub payer: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+
+}
+
+```
+
+  
+
+### 4.3 Variable-Length Fields
+
+  
+
+**Strings and Vectors need special handling:**
+
+  
+
+```rust
+
+#[account]
+
+#[derive(InitSpace)]
+
+pub struct Profile {
+
+    pub id: u64,                         // 8 bytes
+
+    #[max_len(50)]                       // Max 50 chars
+
+    pub name: String,                    // 4 (len) + up to 50 bytes
+
+    #[max_len(200)]                      // Max 200 items
+
+    pub tags: Vec<String>,               // 4 (len) + variable
+
+    pub is_active: bool,                 // 1 byte
+
+}
+
+// Total: 8 + (4 + 50) + (4 + 200*approx_size) + 1
+
+```
+
+  
+
+> [!tip] Key Rules
+
+> - Always specify `#[max_len(...)]` for variable fields
+
+> - Don't put String fields before fixed-size fields (affects alignment)
+
+> - Consider the data you'll actually store
+
+  
+
+---
+
+  
+
+## 🎬 5. INSTRUCTIONS & THE #[program] MODULE
+
+  
+
+### 5.1 Writing Instructions
+
+  
+
+**Instructions are just functions in the #[program] module:**
+
+  
+
+```rust
+
+#[program]
+
+pub mod my_program {
+
+    use super::*;
+
+  
+
+    // Instruction 1: Initialize
+
+    pub fn initialize(ctx: Context<Initialize>, param: String) -> Result<()> {
+
+        ctx.accounts.data.value = 42;
+
+        ctx.accounts.data.owner = ctx.accounts.user.key();
+
+        msg!("Initialized with param: {}", param);
+
+        Ok(())
+
+    }
+
+  
+
+    // Instruction 2: Update
+
+    pub fn update(ctx: Context<Update>, new_value: u64) -> Result<()> {
+
+        require!(new_value > 0, CustomError::InvalidAmount)?;
+
+        ctx.accounts.data.value = new_value;
+
+        Ok(())
+
+    }
+
+  
+
+    // Instruction 3: Transfer
+
+    pub fn transfer(
+
+        ctx: Context<Transfer>,
+
+        recipient: Pubkey,
+
+        amount: u64,
+
+    ) -> Result<()> {
+
+        let account = &mut ctx.accounts.data;
+
+        require!(account.balance >= amount, CustomError::InsufficientBalance)?;
+
+        account.balance -= amount;
+
+        // Send to recipient...
+
+        Ok(())
+
+    }
+
+}
+
+```
+
+  
+
+> [!important] Rules for Instructions
+
+> - ✅ Always return `Result<()>`
+
+> - ✅ First parameter is `ctx: Context<T>`
+
+> - ✅ Additional parameters are instruction arguments
+
+> - ✅ Use `require!` for validation
+
+  
+
+### 5.2 Instruction Parameters
+
+  
+
+**How instruction parameters work:**
+
+  
+
+```rust
+
+pub fn transfer(
+
+    ctx: Context<Transfer>,  // Accounts
+
+    recipient: Pubkey,       // Instruction parameter 1
+
+    amount: u64,            // Instruction parameter 2
+
+) -> Result<()> {
+
+    // Parameters are serialized in transaction
+
+    // Clients pass them when calling instruction
+
+    Ok(())
+
+}
+
+  
+
+// TypeScript client calling it:
+
+const tx = await program.methods
+
+    .transfer(recipientKey, new BN(1000))  // <- Pass parameters here
+
+    .accounts({...})
+
+    .rpc();
+
+```
+
+  
+
+> [!tip] Parameter Rules
+
+> - Must be serializable (standard types, custom structs with Borsh)
+
+> - Complex types should be kept simple (or use instructions-only)
+
+> - Each parameter increases transaction size
+
+  
+
+### 5.3 Accessing Accounts in Instructions
+
+  
+
+**Work with accounts inside your instruction:**
+
+  
+
+```rust
+
+pub fn update_profile(
+
+    ctx: Context<UpdateProfile>,
+
+    new_name: String,
+
+) -> Result<()> {
+
+    // Access account via ctx.accounts
+
+    let profile = &mut ctx.accounts.profile;
+
+    // Modify data
+
+    profile.name = new_name;
+
+    profile.updated_at = Clock::get()?.unix_timestamp;
+
+    // Access other accounts
+
+    msg!("Updated by: {}", ctx.accounts.signer.key());
+
+    Ok(())
+
+}
+
+```
+
+  
+
+---
+
+  
+
+## 🔑 6. PROGRAM DERIVED ADDRESSES (PDAs) IN CODE
+
+  
+
+### 6.1 Creating PDAs - The Simple Way
+
+  
+
+**Anchor makes PDAs easy:**
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct CreateUserVault<'info> {
+
+    #[account(
+
+        init,
+
+        payer = user,
+
+        space = 8 + Vault::INIT_SPACE,
+
+        seeds = [b"vault", user.key().as_ref()],  // <- Seeds
+
+        bump  // <- Anchor finds canonical bump automatically
+
+    )]
+
+    pub vault: Account<'info, Vault>,
+
+    #[account(mut)]
+
+    pub user: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+
+}
+
+  
+
+#[account]
+
+#[derive(InitSpace)]
+
+pub struct Vault {
+
+    pub owner: Pubkey,
+
+    pub bump: u8,
+
+    pub balance: u64,
+
+}
+
+  
+
+pub fn create_vault(ctx: Context<CreateUserVault>) -> Result<()> {
+
+    // PDA automatically created at derived address
+
+    let vault = &mut ctx.accounts.vault;
+
+    vault.owner = ctx.accounts.user.key();
+
+    vault.bump = ctx.bumps.vault;  // <- Get bump from context
+
+    vault.balance = 0;
+
+    Ok(())
+
+}
+
+```
+
+  
+
+**What happens here:**
+
+1. `seeds = [b"vault", user.key().as_ref()]` - Define seeds
+
+2. `bump` - Anchor finds canonical bump
+
+3. Account created at derived address automatically
+
+4. `ctx.bumps.vault` - Access the bump that was used
+
+  
+
+### 6.2 Accessing Existing PDAs
+
+  
+
+**To use a PDA that already exists:**
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct WithdrawFromVault<'info> {
+
+    #[account(
+
+        mut,
+
+        seeds = [b"vault", user.key().as_ref()],
+
+        bump = vault.bump,  // <- Use stored bump
+
+    )]
+
+    pub vault: Account<'info, Vault>,
+
+    pub user: Signer<'info>,
+
+}
+
+  
+
+pub fn withdraw(ctx: Context<WithdrawFromVault>, amount: u64) -> Result<()> {
+
+    require_keys_eq!(ctx.accounts.vault.owner, ctx.accounts.user.key())?;
+
+    let vault = &mut ctx.accounts.vault;
+
+    require!(vault.balance >= amount)?;
+
+    vault.balance -= amount;
+
+    Ok(())
+
+}
+
+```
+
+  
+
+**Key difference:**
+
+- **Creating:** `bump` (find it)
+
+- **Verifying:** `bump = vault.bump` (use stored value)
+
+  
+
+### 6.3 Multi-Seed PDAs
+
+  
+
+**Create unique PDAs using multiple seeds:**
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct CreateEscrow<'info> {
+
+    #[account(
+
+        init,
+
+        payer = buyer,
+
+        space = 8 + Escrow::INIT_SPACE,
+
+        seeds = [
+
+            b"escrow",
+
+            buyer.key().as_ref(),
+
+            seller.key().as_ref(),
+
+            order_id.to_le_bytes().as_ref(),
+
+        ],
+
+        bump
+
+    )]
+
+    pub escrow: Account<'info, Escrow>,
+
+    #[account(mut)]
+
+    pub buyer: Signer<'info>,
+
+    pub seller: SystemAccount<'info>,
+
+    pub system_program: Program<'info, System>,
+
+}
+
+  
+
+#[account]
+
+#[derive(InitSpace)]
+
+pub struct Escrow {
+
+    pub buyer: Pubkey,
+
+    pub seller: Pubkey,
+
+    pub order_id: u64,
+
+    pub bump: u8,
+
+    pub amount: u64,
+
+}
+
+  
+
+pub fn create_escrow(
+
+    ctx: Context<CreateEscrow>,
+
+    order_id: u64,
+
+    amount: u64,
+
+) -> Result<()> {
+
+    let escrow = &mut ctx.accounts.escrow;
+
+    escrow.buyer = ctx.accounts.buyer.key();
+
+    escrow.seller = ctx.accounts.seller.key();
+
+    escrow.order_id = order_id;
+
+    escrow.bump = ctx.bumps.escrow;
+
+    escrow.amount = amount;
+
+    Ok(())
+
+}
+
+```
+
+  
+
+> [!info] Seeds Can Include
+
+> - Fixed bytes: `b"escrow"`
+
+> - Pubkeys: `user.key().as_ref()`
+
+> - Numbers: `order_id.to_le_bytes().as_ref()`
+
+> - Any serializable data
+
+  
+
+---
+
+  
+
+## ⚙️ 7. CONSTRAINTS DEEP DIVE
+
+  
+
+### 7.1 The Big Picture of Constraints
+
+  
+
+**Constraints are attribute-based validations:**
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct Example<'info> {
+
+    #[account(
+
+        // All these are CONSTRAINTS
+
+        init,                    // Create account
+
+        payer = payer,          // Who pays
+
+        space = 100,            // How big
+
+        seeds = [...],          // PDA seeds
+
+        bump,                   // Find bump
+
+        mut,                    // Mutable
+
+        signer,                 // Must sign
+
+        close = recipient,      // Close account
+
+        has_one = authority,    // Verify field
+
+        address = EXPECTED_ID,  // Exact match
+
+    )]
+
+    pub account: Account<'info, MyData>,
+
+}
+
+```
+
+  
+
+### 7.2 Core Constraints
+
+  
+
+#### #[account(init)]
+
+**Creates a new account:**
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct CreateAccount<'info> {
+
+    #[account(
+
+        init,
+
+        payer = user,
+
+        space = 8 + 64  // Discriminator + data size
+
+    )]
+
+    pub new_account: Account<'info, MyData>,
+
+    #[account(mut)]
+
+    pub user: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+
+}
+
+```
+
+  
+
+**Required parameters:**
+
+- `payer = <signer>` - Who pays rent
+
+- `space = <size>` - Account size in bytes
+
+  
+
+#### #[account(init_if_needed)]
+
+**Creates account only if it doesn't exist:**
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct InitIfNeeded<'info> {
+
+    #[account(
+
+        init_if_needed,
+
+        payer = user,
+
+        space = 64
+
+    )]
+
+    pub account: Account<'info, MyData>,
+
+    #[account(mut)]
+
+    pub user: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+
+}
+
+```
+
+  
+
+> [!danger] ⚠️ Security Warning
+
+> Can be exploited if not careful. Only use when absolutely necessary.
+
+  
+
+#### #[account(mut)]
+
+**Account will be modified:**
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct UpdateData<'info> {
+
+    #[account(mut)]  // <- Mark as mutable
+
+    pub data: Account<'info, MyData>,
+
+}
+
+  
+
+pub fn update(ctx: Context<UpdateData>) -> Result<()> {
+
+    ctx.accounts.data.value = 42;  // Can write
+
+    Ok(())
+
+}
+
+```
+
+  
+
+**Without `mut`:**
+
+- Trying to write fails
+
+- Read-only access
+
+  
+
+#### #[account(signer)]
+
+**Account must have signed:**
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct Sign<'info> {
+
+    #[account(signer)]  // <- MUST have signed
+
+    pub authority: Signer<'info>,
+
+}
+
+```
+
+  
+
+**Actually, just use `Signer<'info>` type instead:**
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct Sign<'info> {
+
+    pub authority: Signer<'info>,  // Automatically checks signer
+
+}
+
+```
+
+  
+
+#### #[account(seeds, bump)]
+
+**PDA validation:**
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct UsePDA<'info> {
+
+    #[account(
+
+        mut,
+
+        seeds = [b"user", user.key().as_ref()],
+
+        bump = stored_bump  // Use stored bump
+
+    )]
+
+    pub user_account: Account<'info, UserData>,
+
+    pub user: Signer<'info>,
+
+}
+
+```
+
+  
+
+#### #[account(has_one = field_name)]
+
+**Verify relationship between accounts:**
+
+  
+
+```rust
+
+#[account]
+
+pub struct Profile {
+
+    pub owner: Pubkey,  // <- Must match signer
+
+    pub name: String,
+
+}
+
+  
+
+#[derive(Accounts)]
+
+pub struct UpdateProfile<'info> {
+
+    #[account(
+
+        mut,
+
+        has_one = owner  // Verify profile.owner == ?
+
+    )]
+
+    pub profile: Account<'info, Profile>,
+
+    pub owner: Signer<'info>,  // <- Must match profile.owner
+
+}
+
+```
+
+  
+
+**What it does:**
+
+- Verifies `profile.owner == owner.key()`
+
+- Fails if they don't match
+
+  
+
+#### #[account(address = expr)]
+
+**Verify exact address:**
+
+  
+
+```rust
+
+const SYSTEM_PROGRAM_ID: Pubkey = solana_program::system_program::ID;
+
+  
+
+#[derive(Accounts)]
+
+pub struct Example<'info> {
+
+    #[account(address = SYSTEM_PROGRAM_ID)]
+
+    pub system_program: Program<'info, System>,
+
+}
+
+```
+
+  
+
+#### #[account(close = recipient)]
+
+**Close account and reclaim rent:**
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct CloseAccount<'info> {
+
+    #[account(
+
+        mut,
+
+        close = recipient  // Close and send rent to recipient
+
+    )]
+
+    pub account_to_close: Account<'info, MyData>,
+
+    #[account(mut)]
+
+    pub recipient: SystemAccount<'info>,
+
+}
+
+  
+
+pub fn close_account(ctx: Context<CloseAccount>) -> Result<()> {
+
+    // Account automatically closed
+
+    // Rent automatically transferred to recipient
+
+    Ok(())
+
+}
+
+```
+
+  
+
+#### #[account(constraint = expr)]
+
+**Custom validation:**
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct Example<'info> {
+
+    #[account(
+
+        constraint = data.amount > 0 @ CustomError::InvalidAmount
+
+    )]
+
+    pub data: Account<'info, MyData>,
+
+}
+
+```
+
+  
+
+**Custom error syntax:**
+
+- `condition @ error_code`
+
+- Fails with specific error if false
+
+  
+
+### 7.3 Constraint Combinations
+
+  
+
+**Use multiple constraints together:**
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct ComplexExample<'info> {
+
+    #[account(
+
+        init,
+
+        payer = user,
+
+        space = 8 + UserData::INIT_SPACE,
+
+        seeds = [b"user", user.key().as_ref()],
+
+        bump
+
+    )]
+
+    pub user_data: Account<'info, UserData>,
+
+    #[account(mut, has_one = owner)]
+
+    pub data_account: Account<'info, DataAccount>,
+
+    pub owner: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+
+}
+
+```
+
+  
+
+---
+
+  
+
+## ❌ 8. ERROR HANDLING & CUSTOM ERRORS
+
+  
+
+### 8.1 Defining Custom Errors
+
+  
+
+**Create error codes:**
+
+  
+
+```rust
+
+#[error_code]
+
+pub enum CustomError {
+
+    #[msg("Insufficient balance")]
+
+    InsufficientBalance,
+
+    #[msg("Unauthorized access")]
+
+    Unauthorized,
+
+    #[msg("Amount must be greater than zero")]
+
+    InvalidAmount,
+
+    #[msg("Account not initialized")]
+
+    NotInitialized,
+
+}
+
+```
+
+  
+
+### 8.2 Using Errors in Instructions
+
+  
+
+**Return errors from instructions:**
+
+  
+
+```rust
+
+pub fn transfer(ctx: Context<Transfer>, amount: u64) -> Result<()> {
+
+    // Check conditions
+
+    require!(amount > 0, CustomError::InvalidAmount)?;
+
+    require!(
+
+        ctx.accounts.from_account.balance >= amount,
+
+        CustomError::InsufficientBalance
+
+    )?;
+
+    // If all checks pass, execute
+
+    ctx.accounts.from_account.balance -= amount;
+
+    ctx.accounts.to_account.balance += amount;
+
+    Ok(())
+
+}
+
+```
+
+  
+
+### 8.3 require! Macro
+
+  
+
+**Validation pattern:**
+
+  
+
+```rust
+
+// Simple require
+
+require!(condition, CustomError::SomeError)?;
+
+  
+
+// With keys (common for authorization)
+
+require_keys_eq!(account1.key(), account2.key(), CustomError::KeyMismatch)?;
+
+  
+
+// With relations
+
+require_keys_eq!(profile.owner, signer.key())?;
+
+  
+
+// Compare values
+
+require_eq!(stored_bump, expected_bump)?;
+
+require_gte!(amount, minimum_amount)?;
+
+require_lt!(index, max_index)?;
+
+```
+
+  
+
+### 8.4 Error vs Result Pattern
+
+  
+
+**Always return Result:**
+
+  
+
+```rust
+
+pub fn good_instruction(ctx: Context<Good>) -> Result<()> {
+
+    // Do work
+
+    Ok(())  // Success
+
+}
+
+  
+
+pub fn bad_function() -> Result<()> {
+
+    Err(error!(CustomError::Something))  // Explicit error
+
+}
+
+  
+
+pub fn another_bad() -> Result<()> {
+
+    require!(false, CustomError::AlwaysFails)?;  // Returns error
+
+    Ok(())  // Never reached
+
+}
+
+```
+
+  
+
+---
+
+  
+
+## 📢 9. EVENTS & LOGGING
+
+  
+
+### 9.1 Emitting Events
+
+  
+
+**Create event types:**
+
+  
+
+```rust
+
+#[event]
+
+pub struct Transfer {
+
+    #[index]  // Indexed for efficient filtering
+
+    pub from: Pubkey,
+
+    #[index]
+
+    pub to: Pubkey,
+
+    pub amount: u64,
+
+}
+
+  
+
+#[event]
+
+pub struct UserCreated {
+
+    #[index]
+
+    pub user: Pubkey,
+
+    pub name: String,
+
+    pub created_at: i64,
+
+}
+
+```
+
+  
+
+### 9.2 Emitting from Instructions
+
+  
+
+**Emit events during execution:**
+
+  
+
+```rust
+
+pub fn transfer(ctx: Context<Transfer>, amount: u64) -> Result<()> {
+
+    ctx.accounts.from_account.balance -= amount;
+
+    ctx.accounts.to_account.balance += amount;
+
+    // Emit event
+
+    emit!(Transfer {
+
+        from: ctx.accounts.from_account.key(),
+
+        to: ctx.accounts.to_account.key(),
+
+        amount,
+
+    });
+
+    Ok(())
+
+}
+
+  
+
+pub fn create_user(ctx: Context<CreateUser>, name: String) -> Result<()> {
+
+    let clock = Clock::get()?;
+
+    emit!(UserCreated {
+
+        user: ctx.accounts.user.key(),
+
+        name,
+
+        created_at: clock.unix_timestamp,
+
+    });
+
+    Ok(())
+
+}
+
+```
+
+  
+
+### 9.3 msg! for Logging
+
+  
+
+**Debug logging:**
+
+  
+
+```rust
+
+pub fn some_instruction(ctx: Context<Example>) -> Result<()> {
+
+    msg!("Instruction started");
+
+    msg!("User: {}", ctx.accounts.user.key());
+
+    msg!("Amount: {}", amount);
+
+    // Do work...
+
+    msg!("Operation completed successfully");
+
+    Ok(())
+
+}
+
+```
+
+  
+
+---
+
+  
+
+## 🔀 10. CROSS-PROGRAM INVOCATION (CPI)
+
+  
+
+### 10.1 Simple CPI - Transfer SOL
+
+  
+
+**Call System Program to transfer SOL:**
+
+  
+
+```rust
+
+use solana_program::system_instruction;
+
+  
+
+#[derive(Accounts)]
+
+pub struct TransferSol<'info> {
+
+    #[account(mut)]
+
+    pub from: Signer<'info>,
+
+    #[account(mut)]
+
+    pub to: SystemAccount<'info>,
+
+    pub system_program: Program<'info, System>,
+
+}
+
+  
+
+pub fn transfer_sol(ctx: Context<TransferSol>, amount: u64) -> Result<()> {
+
+    // Create instruction
+
+    let transfer_ix = system_instruction::transfer(
+
+        &ctx.accounts.from.key(),
+
+        &ctx.accounts.to.key(),
+
+        amount
+
+    );
+
+    // Create CPI context
+
+    let cpi_context = CpiContext::new(
+
+        ctx.accounts.system_program.to_account_info(),
+
+        transfer_ix,
+
+    );
+
+    // Invoke
+
+    anchor_lang::solana_program::program::invoke(
+
+        &transfer_ix,
+
+        &[
+
+            ctx.accounts.from.to_account_info(),
+
+            ctx.accounts.to.to_account_info(),
+
+        ],
+
+    )?;
+
+    Ok(())
+
+}
+
+```
+
+  
+
+### 10.2 CPI with Anchor Helper
+
+  
+
+**Easier way using Anchor helpers:**
+
+  
+
+```rust
+
+use anchor_lang::solana_program::system_instruction;
+
+  
+
+pub fn transfer_sol(ctx: Context<TransferSol>, amount: u64) -> Result<()> {
+
+    let cpi_context = CpiContext::new(
+
+        ctx.accounts.system_program.to_account_info(),
+
+        system_program::Transfer {
+
+            from: ctx.accounts.from.to_account_info(),
+
+            to: ctx.accounts.to.to_account_info(),
+
+        },
+
+    );
+
+    system_program::transfer(cpi_context, amount)?;
+
+    Ok(())
+
+}
+
+```
+
+  
+
+### 10.3 CPI with PDA Signing
+
+  
+
+**When PDA must "sign" the CPI:**
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct ReleaseEscrow<'info> {
+
+    #[account(
+
+        mut,
+
+        close = recipient,
+
+        seeds = [b"escrow", buyer.key().as_ref()],
+
+        bump = escrow.bump,
+
+    )]
+
+    pub escrow: Account<'info, Escrow>,
+
+    #[account(mut)]
+
+    pub recipient: SystemAccount<'info>,
+
+    pub buyer: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+
+}
+
+  
+
+pub fn release_escrow(ctx: Context<ReleaseEscrow>) -> Result<()> {
+
+    let escrow = &ctx.accounts.escrow;
+
+    let cpi_context = CpiContext::new_with_signer(
+
+        ctx.accounts.system_program.to_account_info(),
+
+        system_program::Transfer {
+
+            from: escrow.to_account_info(),
+
+            to: ctx.accounts.recipient.to_account_info(),
+
+        },
+
+        &[&[b"escrow", ctx.accounts.buyer.key().as_ref(), &[escrow.bump]]],
+
+    );
+
+    system_program::transfer(cpi_context, escrow.amount)?;
+
+    Ok(())
+
+}
+
+```
+
+  
+
+> [!info] Key Difference
+
+> | Method | Use Case |
+
+> |--------|----------|
+
+> | `CpiContext::new()` | Regular CPI |
+
+> | `CpiContext::new_with_signer()` | PDA "signs" |
+
+  
+
+---
+
+  
+
+## 🪙 11. SPL TOKEN INTEGRATION
+
+  
+
+### 11.1 Token Account Constraints
+
+  
+
+**Working with SPL tokens:**
+
+  
+
+```rust
+
+use anchor_spl::token::{Token, TokenAccount, Mint};
+
+  
+
+#[derive(Accounts)]
+
+pub struct TransferTokens<'info> {
+
+    #[account(
+
+        mut,
+
+        token::mint = mint,  // Verify it's the right mint
+
+        token::authority = authority  // Verify authority
+
+    )]
+
+    pub source: Account<'info, TokenAccount>,
+
+    #[account(mut)]
+
+    pub destination: Account<'info, TokenAccount>,
+
+    pub mint: Account<'info, Mint>,
+
+    pub authority: Signer<'info>,
+
+    pub token_program: Program<'info, Token>,
+
+}
+
+  
+
+pub fn transfer_tokens(ctx: Context<TransferTokens>, amount: u64) -> Result<()> {
+
+    let cpi_context = CpiContext::new(
+
+        ctx.accounts.token_program.to_account_info(),
+
+        token::Transfer {
+
+            from: ctx.accounts.source.to_account_info(),
+
+            to: ctx.accounts.destination.to_account_info(),
+
+            authority: ctx.accounts.authority.to_account_info(),
+
+        },
+
+    );
+
+    token::transfer(cpi_context, amount)?;
+
+    Ok(())
+
+}
+
+```
+
+  
+
+### 11.2 Associated Token Accounts (ATAs)
+
+  
+
+**Using Anchor's ATA constraint:**
+
+  
+
+```rust
+
+use anchor_spl::associated_token::AssociatedToken;
+
+use anchor_spl::token::{Token, TokenAccount};
+
+  
+
+#[derive(Accounts)]
+
+pub struct PayWithATA<'info> {
+
+    #[account(
+
+        init_if_needed,
+
+        payer = payer,
+
+        associated_token::mint = mint,
+
+        associated_token::authority = user
+
+    )]
+
+    pub user_ata: Account<'info, TokenAccount>,
+
+    pub mint: Account<'info, Mint>,
+
+    pub user: SystemAccount<'info>,
+
+    #[account(mut)]
+
+    pub payer: Signer<'info>,
+
+    pub token_program: Program<'info, Token>,
+
+    pub associated_token_program: Program<'info, AssociatedToken>,
+
+    pub system_program: Program<'info, System>,
+
+}
+
+```
+
+  
+
+---
+
+  
+
+## 🧪 12. TESTING ANCHOR PROGRAMS
+
+  
+
+### 12.1 Basic Test Structure
+
+  
+
+**File: `tests/my_solana_program.ts`**
+
+  
+
+```typescript
+
+import * as anchor from "@coral-xyz/anchor";
+
+import { Program } from "@coral-xyz/anchor";
+
+import { MySolanaProgram } from "../target/types/my_solana_program";
+
+import { assert } from "chai";
+
+  
+
+describe("my_solana_program", () => {
+
+    anchor.setProvider(anchor.AnchorProvider.env());
+
+    const program = anchor.workspace.MySolanaProgram as Program<MySolanaProgram>;
+
+  
+
+    it("Initializes successfully", async () => {
+
+        const tx = await program.methods
+
+            .initialize()
+
+            .rpc();
+
+  
+
+        console.log("Transaction:", tx);
+
+    });
+
+});
+
+```
+
+  
+
+### 12.2 Testing Instructions
+
+  
+
+**Complete test example:**
+
+  
+
+```typescript
+
+it("Creates and updates account", async () => {
+
+    // Generate keypair for new account
+
+    const newAccount = anchor.web3.Keypair.generate();
+
+  
+
+    // Create account
+
+    const createTx = await program.methods
+
+        .initialize(new anchor.BN(100))
+
+        .accounts({
+
+            newAccount: newAccount.publicKey,
+
+            user: program.provider.publicKey,
+
+            systemProgram: anchor.web3.SystemProgram.programId,
+
+        })
+
+        .signers([newAccount])
+
+        .rpc();
+
+  
+
+    // Verify account was created
+
+    const account = await program.account.myData.fetch(newAccount.publicKey);
+
+    assert.equal(account.value.toNumber(), 100);
+
+  
+
+    // Update account
+
+    const updateTx = await program.methods
+
+        .update(new anchor.BN(200))
+
+        .accounts({
+
+            account: newAccount.publicKey,
+
+            user: program.provider.publicKey,
+
+        })
+
+        .rpc();
+
+  
+
+    // Verify update
+
+    const updatedAccount = await program.account.myData.fetch(newAccount.publicKey);
+
+    assert.equal(updatedAccount.value.toNumber(), 200);
+
+});
+
+```
+
+  
+
+### 12.3 Testing Error Cases
+
+  
+
+**Verify errors are thrown:**
+
+  
+
+```typescript
+
+it("Fails with invalid amount", async () => {
+
+    try {
+
+        await program.methods
+
+            .transfer(new anchor.BN(0))  // Invalid!
+
+            .accounts({...})
+
+            .rpc();
+
+        // Should not reach here
+
+        assert.fail("Should have thrown error");
+
+    } catch (err) {
+
+        // Verify it's the right error
+
+        assert.isTrue(err.message.includes("InvalidAmount"));
+
+    }
+
+});
+
+```
+
+  
+
+### 12.4 Testing PDAs
+
+  
+
+**Verify PDA derivation:**
+
+  
+
+```typescript
+
+it("Derives PDA correctly", async () => {
+
+    const user = program.provider.publicKey;
+
+    // Derive PDA on client
+
+    const [pda, bump] = await anchor.web3.PublicKey.findProgramAddressSync(
+
+        [Buffer.from("user"), user.toBuffer()],
+
+        program.programId
+
+    );
+
+  
+
+    // Create account at PDA
+
+    await program.methods
+
+        .initializeUser()
+
+        .accounts({
+
+            userAccount: pda,
+
+            user: user,
+
+            systemProgram: anchor.web3.SystemProgram.programId,
+
+        })
+
+        .rpc();
+
+  
+
+    // Verify account exists at PDA
+
+    const account = await program.account.userAccount.fetch(pda);
+
+    assert.ok(account);
+
+});
+
+```
+
+  
+
+---
+
+  
+
+## 🛠️ 13. ANCHOR CLI & WORKSPACE
+
+  
+
+### 13.1 Project Structure
+
+  
+
+**Complete Anchor project layout:**
+
+  
+
+```
+
+my_project/
+
+├── Anchor.toml              # Project config
+
+├── Cargo.toml               # Workspace dependencies
+
+├── package.json             # Node dependencies
+
+├── programs/
+
+│   └── my_program/
+
+│       ├── Cargo.toml       # Program config
+
+│       └── src/
+
+│           ├── lib.rs       # Main code
+
+│           ├── lib.rs       # Helper modules (optional)
+
+│           └── state.rs     # Data structures (optional)
+
+├── tests/
+
+│   └── my_program.ts        # Tests
+
+├── target/
+
+│   ├── deploy/
+
+│   │   └── my_program.so    # Compiled binary
+
+│   ├── idl/
+
+│   │   └── my_program.json  # IDL
+
+│   └── types/
+
+│       └── my_program.ts    # Generated types
+
+└── app/                     # Frontend (optional)
+
+```
+
+  
+
+### 13.2 Anchor CLI Commands
+
+  
+
+**Essential commands:**
+
+  
+
+```bash
+
+# Initialize new project
+
+anchor init my_project
+
+  
+
+# Build program
+
+anchor build
+
+  
+
+# Test program (with local validator)
+
+anchor test
+
+  
+
+# Deploy to cluster
+
+anchor deploy
+
+  
+
+# Run shell (interactive)
+
+anchor shell
+
+  
+
+# Expand macros (see what derives do)
+
+anchor expand
+
+  
+
+# List all programs
+
+anchor keys list
+
+  
+
+# Sync program IDs
+
+anchor keys sync
+
+```
+
+  
+
+### 13.3 Anchor.toml Configuration
+
+  
+
+**Configure your workspace:**
+
+  
+
+```toml
+
+[package]
+
+name = "my_project"
+
+version = "0.1.0"
+
+description = "My Solana program"
+
+edition = "2021"
+
+  
+
+[programs.localnet]
+
+my_program = "11111111111111111111111111111111"
+
+  
+
+[programs.devnet]
+
+my_program = "2222222222222222222222222222222"
+
+  
+
+[programs.mainnet]
+
+my_program = "3333333333333333333333333333333"
+
+  
+
+[provider]
+
+cluster = "Localnet"
+
+wallet = "~/.config/solana/id.json"
+
+  
+
+[scripts]
+
+test = "yarn run ts-mocha --timeout 60000 tests/**/*.ts"
+
+```
+
+  
+
+---
+
+  
+
+## 📝 14. IDL & CLIENT GENERATION
+
+  
+
+### 14.1 What is an IDL?
+
+  
+
+**IDL = Interface Definition Language**
+
+  
+
+```json
+
+{
+
+  "version": "0.1.0",
+
+  "name": "my_program",
+
+  "instructions": [
+
+    {
+
+      "name": "initialize",
+
+      "accounts": [...],
+
+      "args": [...]
+
+    }
+
+  ],
+
+  "accounts": [
+
+    {
+
+      "name": "MyData",
+
+      "type": {
+
+        "kind": "struct",
+
+        "fields": [...]
+
+      }
+
+    }
+
+  ]
+
+}
+
+```
+
+  
+
+**Generated automatically when you run:**
+
+```bash
+
+anchor build
+
+```
+
+  
+
+### 14.2 Using Generated Client
+
+  
+
+**TypeScript client automatically generated:**
+
+  
+
+```typescript
+
+import { Program } from "@coral-xyz/anchor";
+
+import idl from "./my_program.json";
+
+  
+
+// TypeScript types are auto-generated
+
+import { MyProgram } from "./target/types/my_program";
+
+  
+
+const program = new Program<MyProgram>(idl, provider);
+
+  
+
+// Now you get autocomplete on methods!
+
+await program.methods.initialize().rpc();
+
+  
+
+// And account types!
+
+const account = await program.account.myData.fetch(pubkey);
+
+```
+
+  
+
+---
+
+  
+
+## 🔒 15. SECURITY PATTERNS IN CODE
+
+  
+
+### 15.1 Always Validate Accounts
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct SecureOperation<'info> {
+
+    #[account(
+
+        mut,
+
+        seeds = [b"vault", user.key().as_ref()],
+
+        bump = vault.bump,
+
+        has_one = owner,  // Enforce relationship
+
+    )]
+
+    pub vault: Account<'info, Vault>,
+
+    #[account(
+
+        address = TREASURY_ID  // Exact address match
+
+    )]
+
+    pub treasury: Account<'info, Treasury>,
+
+    pub owner: Signer<'info>,
+
+}
+
+  
+
+pub fn secure_operation(ctx: Context<SecureOperation>) -> Result<()> {
+
+    // All validations automatic!
+
+    Ok(())
+
+}
+
+```
+
+  
+
+### 15.2 Signer Privilege Rules
+
+  
+
+> [!danger] NEVER Pass User as Signer to Untrusted CPI
+
+> ```rust
+
+> // ❌ WRONG - User signer propagates to untrusted program
+
+> pub fn execute_untrusted(
+
+>     ctx: Context<Execute>,
+
+>     instruction: Instruction,
+
+> ) -> Result<()> {
+
+>     invoke(&instruction, &[ctx.accounts.user.clone(), ...])?;
+
+>     Ok(())
+
+> }
+
+> ```
+
+  
+
+> [!success] ✅ Right Way - Don't Pass User Signer
+
+> ```rust
+
+> pub fn execute_trusted(
+
+>     ctx: Context<Execute>,
+
+>     instruction: Instruction,
+
+> ) -> Result<()> {
+
+>     invoke(&instruction, &[vault.clone(), ...])?;
+
+>     Ok(())
+
+> }
+
+> ```
+
+  
+
+### 15.3 Anchor Constraints Are Your Friend
+
+  
+
+> [!success] ✅ This is SAFE - Anchor Validates Everything
+
+> ```rust
+
+> #[derive(Accounts)]
+
+> pub struct Safe<'info> {
+
+>     #[account(mut, has_one = authority)]
+
+>     pub vault: Account<'info, Vault>,
+
+>     pub authority: Signer<'info>,
+
+> }
+
+> ```
+
+  
+
+> [!danger] ❌ This is NOT Safe - No Validation
+
+> ```rust
+
+> #[derive(Accounts)]
+
+> pub struct Unsafe<'info> {
+
+>     pub vault: UncheckedAccount<'info>,
+
+>     pub authority: UncheckedAccount<'info>,
+
+> }
+
+> ```
+
+  
+
+---
+
+  
+
+## 🚀 16. ADVANCED TECHNIQUES
+
+  
+
+### 16.1 Zero-Copy Deserialization
+
+  
+
+**For very large accounts, save compute:**
+
+  
+
+```rust
+
+#[account(zero_copy)]
+
+pub struct LargeData {
+
+    pub items: [Item; 10000],
+
+}
+
+  
+
+pub fn read_large_data(ctx: Context<ReadLarge>) -> Result<()> {
+
+    let data = ctx.accounts.large_account.load()?;
+
+    let first_item = data.items[0];
+
+    // No expensive deserialization!
+
+    Ok(())
+
+}
+
+```
+
+  
+
+### 16.2 Account Reallocation
+
+  
+
+**Grow accounts dynamically:**
+
+  
+
+```rust
+
+#[derive(Accounts)]
+
+pub struct Reallocate<'info> {
+
+    #[account(
+
+        mut,
+
+        realloc = 1000,                    // New size
+
+        realloc::payer = payer,            // Who pays
+
+        realloc::zero = false,             // Zero new bytes?
+
+    )]
+
+    pub account: Account<'info, MyData>,
+
+    #[account(mut)]
+
+    pub payer: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+
+}
+
+  
+
+pub fn grow_account(ctx: Context<Reallocate>) -> Result<()> {
+
+    // Account automatically resized!
+
+    Ok(())
+
+}
+
+```
+
+  
+
+### 16.3 Multiple Programs in One Workspace
+
+  
+
+```
+
+programs/
+
+├── program_a/
+
+│   └── src/lib.rs
+
+└── program_b/
+
+    └── src/lib.rs
+
+  
+
+Cargo.toml (workspace with both)
+
+Anchor.toml (builds all)
+
+```
+
+  
+
+**Build all:**
+
+```bash
+
+anchor build
+
+```
+
+  
+
+**Build specific:**
+
+```bash
+
+anchor build -p program_a
+
+```
+
+  
+
+---
+
+  
+
+## 📦 17. DEPLOYMENT & UPGRADES
+
+  
+
+### 17.1 Deploying to Devnet
+
+  
+
+**Step by step:**
+
+  
+
+```bash
+
+# 1. Build
+
+anchor build
+
+  
+
+# 2. Get devnet airdrop
+
+solana airdrop 5 -u devnet
+
+  
+
+# 3. Update Anchor.toml to devnet
+
+solana config set --url devnet
+
+  
+
+# 4. Deploy
+
+anchor deploy
+
+  
+
+# 5. Verify deployment
+
+solana program show <PROGRAM_ID> -u devnet
+
+```
+
+  
+
+### 17.2 Making Program Upgradeable
+
+  
+
+**Programs are upgradeable by default (if you have authority).**
+
+  
+
+**But you can lock them:**
+
+  
+
+```bash
+
+solana program set-upgrade-authority <PROGRAM_ID> --final
+
+```
+
+  
+
+**Or transfer authority:**
+
+  
+
+```bash
+
+solana program set-upgrade-authority <PROGRAM_ID> --new-upgrade-authority <NEW_AUTHORITY>
+
+```
+
+  
+
+---
+
+  
+
+## 💯 18. REAL-WORLD EXAMPLE: COMPLETE PROGRAM
+
+  
+
+### 18.1 Todo List Program
+
+  
+
+**A complete example: simple todo list:**
+
+  
+
+```rust
+
+use anchor_lang::prelude::*;
+
+  
+
+declare_id!("11111111111111111111111111111111");
+
+  
+
+#[program]
+
+pub mod todo {
+
+    use super::*;
+
+  
+
+    pub fn create_todo(
+
+        ctx: Context<CreateTodo>,
+
+        title: String,
+
+    ) -> Result<()> {
+
+        require!(!title.is_empty(), TodoError::EmptyTitle)?;
+
+  
+
+        let todo_account = &mut ctx.accounts.todo_account;
+
+        todo_account.owner = ctx.accounts.owner.key();
+
+        todo_account.title = title;
+
+        todo_account.completed = false;
+
+        todo_account.created_at = Clock::get()?.unix_timestamp;
+
+  
+
+        emit!(TodoCreated {
+
+            owner: ctx.accounts.owner.key(),
+
+            title: todo_account.title.clone(),
+
+        });
+
+  
+
+        Ok(())
+
+    }
+
+  
+
+    pub fn complete_todo(ctx: Context<CompleteTodo>) -> Result<()> {
+
+        let todo_account = &mut ctx.accounts.todo_account;
+
+        require_keys_eq!(
+
+            todo_account.owner,
+
+            ctx.accounts.owner.key(),
+
+            TodoError::Unauthorized
+
+        )?;
+
+  
+
+        todo_account.completed = true;
+
+  
+
+        emit!(TodoCompleted {
+
+            owner: ctx.accounts.owner.key(),
+
+            title: todo_account.title.clone(),
+
+        });
+
+  
+
+        Ok(())
+
+    }
+
+  
+
+    pub fn delete_todo(ctx: Context<DeleteTodo>) -> Result<()> {
+
+        require_keys_eq!(
+
+            ctx.accounts.todo_account.owner,
+
+            ctx.accounts.owner.key(),
+
+            TodoError::Unauthorized
+
+        )?;
+
+  
+
+        Ok(())
+
+    }
+
+}
+
+  
+
+#[derive(Accounts)]
+
+#[instruction(title: String)]
+
+pub struct CreateTodo<'info> {
+
+    #[account(
+
+        init,
+
+        payer = owner,
+
+        space = 8 + TodoAccount::INIT_SPACE,
+
+        seeds = [b"todo", owner.key().as_ref(), title.as_bytes()],
+
+        bump
+
+    )]
+
+    pub todo_account: Account<'info, TodoAccount>,
+
+  
+
+    #[account(mut)]
+
+    pub owner: Signer<'info>,
+
+  
+
+    pub system_program: Program<'info, System>,
+
+}
+
+  
+
+#[derive(Accounts)]
+
+pub struct CompleteTodo<'info> {
+
+    #[account(
+
+        mut,
+
+        seeds = [b"todo", owner.key().as_ref(), todo_account.title.as_bytes()],
+
+        bump = todo_account.bump,
+
+    )]
+
+    pub todo_account: Account<'info, TodoAccount>,
+
+  
+
+    pub owner: Signer<'info>,
+
+}
+
+  
+
+#[derive(Accounts)]
+
+pub struct DeleteTodo<'info> {
+
+    #[account(
+
+        mut,
+
+        close = owner,
+
+        seeds = [b"todo", owner.key().as_ref(), todo_account.title.as_bytes()],
+
+        bump = todo_account.bump,
+
+    )]
+
+    pub todo_account: Account<'info, TodoAccount>,
+
+  
+
+    #[account(mut)]
+
+    pub owner: Signer<'info>,
+
+}
+
+  
+
+#[account]
+
+#[derive(InitSpace)]
+
+pub struct TodoAccount {
+
+    pub owner: Pubkey,
+
+    pub bump: u8,
+
+    #[max_len(100)]
+
+    pub title: String,
+
+    pub completed: bool,
+
+    pub created_at: i64,
+
+}
+
+  
+
+#[event]
+
+pub struct TodoCreated {
+
+    #[index]
+
+    pub owner: Pubkey,
+
+    pub title: String,
+
+}
+
+  
+
+#[event]
+
+pub struct TodoCompleted {
+
+    #[index]
+
+    pub owner: Pubkey,
+
+    pub title: String,
+
+}
+
+  
+
+#[error_code]
+
+pub enum TodoError {
+
+    #[msg("Title cannot be empty")]
+
+    EmptyTitle,
+
+    #[msg("Unauthorized access")]
+
+    Unauthorized,
+
+}
+
+```
+
+  
+
+### 18.2 Corresponding Tests
+
+  
+
+```typescript
+
+describe("todo", () => {
+
+    it("Creates a todo", async () => {
+
+        const title = "Buy groceries";
+
+        const [todoPda] = await PublicKey.findProgramAddressSync(
+
+            [
+
+                Buffer.from("todo"),
+
+                provider.publicKey.toBuffer(),
+
+                Buffer.from(title),
+
+            ],
+
+            program.programId
+
+        );
+
+  
+
+        const tx = await program.methods
+
+            .createTodo(title)
+
+            .accounts({
+
+                todoAccount: todoPda,
+
+                owner: provider.publicKey,
+
+                systemProgram: SystemProgram.programId,
+
+            })
+
+            .rpc();
+
+  
+
+        const todo = await program.account.todoAccount.fetch(todoPda);
+
+        assert.equal(todo.title, title);
+
+        assert.equal(todo.completed, false);
+
+    });
+
+  
+
+    it("Completes a todo", async () => {
+
+        // ... get todoAccount...
+
+        await program.methods
+
+            .completeTodo()
+
+            .accounts({
+
+                todoAccount: todoPda,
+
+                owner: provider.publicKey,
+
+            })
+
+            .rpc();
+
+  
+
+        const todo = await program.account.todoAccount.fetch(todoPda);
+
+        assert.equal(todo.completed, true);
+
+    });
+
+  
+
+    it("Fails to complete with wrong owner", async () => {
+
+        const wrongOwner = Keypair.generate();
+
+        try {
+
+            await program.methods
+
+                .completeTodo()
+
+                .accounts({
+
+                    todoAccount: todoPda,
+
+                    owner: wrongOwner.publicKey,
+
+                })
+
+                .signers([wrongOwner])
+
+                .rpc();
+
+            assert.fail("Should have failed");
+
+        } catch (err) {
+
+            assert.isTrue(err.message.includes("Unauthorized"));
+
+        }
+
+    });
+
+});
+
+```
+
+  
+
+---
+
+  
+
+## 🎓 KEY TAKEAWAYS
+
+  
+
+> [!abstract]+ For Using Anchor
+
+> 1. **#[derive(Accounts)] is your security layer** – Always use it, never skip
+
+> 2. **Constraints prevent bugs** – Use `#[account(...)]` extensively
+
+> 3. **PDAs are gold** – Use them for deterministic account creation
+
+> 4. **Always validate accounts** – Check owner, signer, relationships
+
+> 5. **Return Result<()>** – Every instruction must handle errors
+
+  
+
+> [!tip]+ Best Practices
+
+> - ✅ Use `#[derive(InitSpace)]` for size calculation
+
+> - ✅ Store bump seeds in accounts
+
+> - ✅ Test error cases as much as success cases
+
+> - ✅ Use `require!` and `require_keys_eq!` for validation
+
+> - ✅ Emit events for important state changes
+
+> - ✅ Document constraints with comments
+
+  
+
+> [!todo] Security Checklist
+
+> - [ ] All account access is validated
+
+> - [ ] Signers are verified for sensitive operations
+
+> - [ ] PDAs use canonical bumps
+
+> - [ ] No hardcoded addresses (use constraints)
+
+> - [ ] No arbitrary CPI calls
+
+> - [ ] No signer privilege reuse
+
+> - [ ] Rent-exempt accounts are verified
+
+  
+
+---
+
+  
+
+## 🚀 NEXT STEPS
+
+  
+
+> [!rocket] You're Ready!
+
+> You now have everything you need to build production-grade Solana programs!
+
+  
+
+> [!example]+ Recommended Progression
+
+> 1. Build simple programs (counter, todo list)
+
+> 2. Add PDAs and multi-account operations
+
+> 3. Integrate with SPL tokens
+
+> 4. Implement CPIs to external programs
+
+> 5. Add advanced features (events, error handling)
+
+> 6. Deploy to devnet and mainnet
+
+  
+
+> [!info]+ Resources
+
+> - **Anchor Docs:** https://docs.rs/anchor-lang/
+
+> - **Solana Docs:** https://solana.com/docs
+
+> - **Examples:** https://github.com/coral-xyz/anchor/tree/master/examples
+
+> - **Playground:** https://beta.solpg.io
+
+  
+
+---
+
+  
+
+> [!info] Metadata
+
+> **Last Updated:** December 5, 2025
+
+> **Format:** Obsidian Markdown with Code Examples, Tables, and Best Practices
+
+> **Status:** Ready for Production Use ✅
+
+>
+
+> #solana #anchor #rust #blockchain #web3 #smart-contracts
